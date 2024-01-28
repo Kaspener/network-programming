@@ -27,11 +27,6 @@ int main()
     char buf[BUFFERSIZE];
     int socket = Socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in serverAddress = enterSocketAddress();
-    struct sockaddr_in clientAddress;
-    clientAddress.sin_family = AF_INET;
-    clientAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    clientAddress.sin_port = 0;
-    Bind(socket, &clientAddress, sizeof(clientAddress));
     int delay;
     printf("Enter delay [1-9]: ");
     scanf("%d", &delay);
