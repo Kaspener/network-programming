@@ -45,8 +45,8 @@ int main()
         }
         int length = sizeof(serverAddress);
         memset(buf, 0, BUFFERSIZE);
-        int msglength;
-        if (msglength = recvfrom(socket, buf, BUFFERSIZE, 0 , (struct sockaddr *) &serverAddress, &length) == -1 ){
+        ssize_t msglength = recvfrom(socket, buf, BUFFERSIZE, 0 , (struct sockaddr *) &serverAddress, &length);
+        if (msglength == -1 ){
             perror("Error socket client");
             exit(EXIT_FAILURE);
         }

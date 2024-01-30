@@ -12,7 +12,7 @@ int main()
     int serverSocket = Socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in serverAddress, clientAddress;
     serverAddress.sin_family = AF_INET;
-    serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+    serverAddress.sin_addr.s_addr = INADDR_ANY;
     socklen_t length = sizeof(serverAddress);
     Bind(serverSocket, &serverAddress, length);
     GetSockName(serverSocket, &serverAddress, &length);
@@ -20,8 +20,8 @@ int main()
     while(1){
         length = sizeof(clientAddress);
         memset(buffer, 0, BUFFERSIZE);
-        int msglength;
-        if (msglength = recvfrom(serverSocket, buffer, BUFFERSIZE, 0 , (struct sockaddr *) &clientAddress, &length) == -1 ){
+        ssize_t msglength = recvfrom(serverSocket, buffer, BUFFERSIZE, 0 , (struct sockaddr *) &clientAddress, &length);
+        if (msglength == -1 ){
             perror("Error socket client");
             exit(EXIT_FAILURE);
         }
@@ -29,6 +29,7 @@ int main()
         inet_ntop(AF_INET, &(clientAddress.sin_addr), ip, INET_ADDRSTRLEN);
         printf("SERVER: IP адрес клиента: %s\n", ip); 
         printf("SERVER: PORT клиента: %d\n", ntohs(clientAddress.sin_port)) ; 
+        printf("SERVER: Длина: %ld\n", msglength);
         printf("SERVER: Сообщение: %s\n\n", buffer);
         char ans[] = "ANSWERD FROM SERVER FOR  ";
         ans[24] = buffer[0]; 
