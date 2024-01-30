@@ -1,21 +1,63 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <signal.h>
+#include <pthread.h>
 #include <unistd.h>
-#include <sys/wait.h>
 
 #include "socketFunctions.h"
 
-void signal_handler(int signo)
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+FILE *shared_file;
+
+struct ThreadData
 {
-    while(waitpid(-1, NULL, WNOHANG) > 0);
+    int client_socket;
+    struct sockaddr_in client_address;
+};
+
+void *clientThread(void *data)
+{
+    struct ThreadData *thread_data = (struct ThreadData *)data;
+    int client_socket = thread_data->client_socket;
+    struct sockaddr_in client_address = thread_data->client_address;
+
+    char client_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(client_address.sin_addr), client_ip, INET_ADDRSTRLEN);
+    int client_port = ntohs(client_address.sin_port);
+
+    while (1)
+    {
+        char buffer[BUFFERSIZE];
+        ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
+
+        if (bytes_received <= 0)
+        {
+            close(client_socket);
+            free(thread_data);
+            pthread_exit(NULL);
+        }
+
+        buffer[bytes_received] = '\0';
+
+        char ans[] = "ANSWERD FROM SERVER FOR  ";
+        ans[24] = buffer[0];
+        send(client_socket, ans, strlen(ans), 0);
+
+        pthread_mutex_lock(&mutex);
+
+        printf("Received from %s:%d: %s\n", client_ip, client_port, buffer);
+        fprintf(shared_file, "Received from %s:%d: %s\n", client_ip, client_port, buffer);
+        fflush(shared_file);
+
+        pthread_mutex_unlock(&mutex);
+    }
 }
 
 int main()
 {
-    signal(SIGCHLD, signal_handler);
+    struct ThreadData *threadData;
 
+    pthread_t thread_id;
     int clientSocket;
     int serverSocket = Socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in serverAddress, clientAddress;
@@ -26,52 +68,39 @@ int main()
     GetSockName(serverSocket, &serverAddress, &length);
     Listen(serverSocket, LISTEN_QUEUE);
 
+    shared_file = fopen("shared_file.txt", "a");
+    if (shared_file == NULL)
+    {
+        perror("Failed to open shared file");
+        exit(EXIT_FAILURE);
+    }
+
     printf("Open server:\nAddress = %d\tPort = %d\n", ntohl(serverAddress.sin_addr.s_addr), ntohs(serverAddress.sin_port));
     while (1)
     {
-        length = sizeof(clientAddress);
         clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddress, &length);
         if (clientSocket == -1)
         {
             perror("Accept failed");
             continue;
         }
-        pid_t children_pid = fork();
-        if (children_pid == -1)
-        {
-            perror("Fork failed");
-            close(clientSocket);
-            continue;
-        }
-        else if (children_pid == 0)
-        {
-            close(serverSocket);
 
-            char client_ip[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &(clientAddress.sin_addr), client_ip, INET_ADDRSTRLEN);
-            int client_port = ntohs(clientAddress.sin_port);
+        threadData = (struct ThreadData *)malloc(sizeof(struct ThreadData));
+        threadData->client_address = clientAddress;
+        threadData->client_socket = clientSocket;
 
-            char buffer[BUFFERSIZE];
-            ssize_t bytes_received;
-            while ((bytes_received = recv(clientSocket, buffer, sizeof(buffer), 0)) > 0)
-            {
-                buffer[bytes_received] = '\0';
-                printf("SERVER: IP адрес клиента: %s\n", client_ip);
-                printf("SERVER: PORT клиента: %d\n", client_port);
-                printf("SERVER: PID процесса сервера: %d\n", getpid());
-                printf("SERVER: Сообщение: %s\n\n", buffer);
-                char ans[] = "ANSWERD FROM SERVER FOR  ";
-                ans[24] = buffer[0];
-                send(clientSocket, ans, strlen(ans), 0);
-            }
+        if (pthread_create(&thread_id, NULL, clientThread, threadData))
+        {
+            perror("Thread creation failed");
             close(clientSocket);
-            exit(EXIT_SUCCESS);
+            free(threadData);
         }
         else
         {
-            close(clientSocket);
+            pthread_detach(thread_id);
         }
     }
     close(serverSocket);
+    fclose(shared_file);
     return EXIT_SUCCESS;
 }
