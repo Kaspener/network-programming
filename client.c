@@ -5,8 +5,6 @@
 
 #include "socketFunctions.h"
 
-#define BUFFERSIZE 128
-
 struct sockaddr_in enterSocketAddress()
 {
     struct sockaddr_in sa;
@@ -25,7 +23,7 @@ struct sockaddr_in enterSocketAddress()
 int main()
 {
     char buf[BUFFERSIZE];
-    int socket = Socket(AF_INET, SOCK_DGRAM, 0);
+    int socket = Socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in serverAddress = enterSocketAddress();
     int delay;
     printf("Enter delay [1-9]: ");
@@ -34,21 +32,25 @@ int main()
         perror("Error delay");
         exit(EXIT_FAILURE);
     }
+    Connect(socket, (struct sockaddr *) &serverAddress, sizeof(serverAddress));
     while (1)
     {
-        memset(buf, 0, BUFFERSIZE);
         sprintf(buf, "%d", delay);
-        if (sendto(socket, buf, BUFFERSIZE, 0, (struct sockaddr *) &serverAddress, sizeof(serverAddress)) == -1)
+        buf[1] = '\0';
+        if (send(socket, buf, strlen(buf), 0) == -1)
         {
             perror("sandto error");
-            exit(1);
+            exit(EXIT_FAILURE);
         }
         int length = sizeof(serverAddress);
-        memset(buf, 0, BUFFERSIZE);
-        ssize_t msglength = recvfrom(socket, buf, BUFFERSIZE, 0 , (struct sockaddr *) &serverAddress, &length);
+        ssize_t msglength = recv(socket, buf, 26, 0);
         if (msglength == -1 ){
             perror("Error socket client");
             exit(EXIT_FAILURE);
+        }
+        if (msglength == 0){
+            printf("End of server!\n");
+            exit(EXIT_SUCCESS);
         }
         printf("%s\n", buf);
         sleep(delay);

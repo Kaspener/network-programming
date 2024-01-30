@@ -27,3 +27,17 @@ void GetSockName(int sockfd, struct sockaddr_in *restrict addr, socklen_t *restr
         exit(EXIT_FAILURE);
     }
 }
+
+void Listen(int sockfd, int backlog) {
+    if (listen(sockfd, backlog) == -1) {
+        perror("Listen failed");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void Connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    if (connect(sockfd, addr, addrlen) == -1) {
+        perror("Connect failed");
+        exit(EXIT_FAILURE);
+    }
+}
