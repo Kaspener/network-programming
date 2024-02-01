@@ -7,7 +7,8 @@
 #include <arpa/inet.h>
 
 #define BUFFERSIZE 32
-#define LISTEN_QUEUE 5
+#define LISTEN_QUEUE 10
+#define MAX_CLIENTS 10
 
 int Socket(int domain, int type, int protocol);
 

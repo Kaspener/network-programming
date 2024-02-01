@@ -1,64 +1,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <pthread.h>
 #include <unistd.h>
+#include <sys/select.h>
+#include <errno.h>
 
 #include "socketFunctions.h"
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-FILE *shared_file;
-
-struct ThreadData
-{
-    int client_socket;
-    struct sockaddr_in client_address;
-};
-
-void *clientThread(void *data)
-{
-    struct ThreadData *thread_data = (struct ThreadData *)data;
-    int client_socket = thread_data->client_socket;
-    struct sockaddr_in client_address = thread_data->client_address;
-
-    char client_ip[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &(client_address.sin_addr), client_ip, INET_ADDRSTRLEN);
-    int client_port = ntohs(client_address.sin_port);
-
-    while (1)
-    {
-        char buffer[BUFFERSIZE];
-        ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
-
-        if (bytes_received <= 0)
-        {
-            close(client_socket);
-            free(thread_data);
-            pthread_exit(NULL);
-        }
-
-        buffer[bytes_received] = '\0';
-
-        char ans[] = "ANSWERD FROM SERVER FOR  ";
-        ans[24] = buffer[0];
-        send(client_socket, ans, strlen(ans), 0);
-
-        pthread_mutex_lock(&mutex);
-
-        printf("Received from %s:%d: %s\n", client_ip, client_port, buffer);
-        fprintf(shared_file, "Received from %s:%d: %s\n", client_ip, client_port, buffer);
-        fflush(shared_file);
-
-        pthread_mutex_unlock(&mutex);
-    }
-}
-
 int main()
 {
-    struct ThreadData *threadData;
-
-    pthread_t thread_id;
+    int clientSockets[MAX_CLIENTS];
     int clientSocket;
+    fd_set read_fds; // набор файловых дескрипторов
+    int max_socket;
     int serverSocket = Socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in serverAddress, clientAddress;
     serverAddress.sin_family = AF_INET;
@@ -67,40 +21,77 @@ int main()
     Bind(serverSocket, &serverAddress, length);
     GetSockName(serverSocket, &serverAddress, &length);
     Listen(serverSocket, LISTEN_QUEUE);
-
-    shared_file = fopen("shared_file.txt", "a");
-    if (shared_file == NULL)
-    {
-        perror("Failed to open shared file");
-        exit(EXIT_FAILURE);
-    }
-
     printf("Open server:\nAddress = %d\tPort = %d\n", ntohl(serverAddress.sin_addr.s_addr), ntohs(serverAddress.sin_port));
+
+    memset(clientSockets, 0, sizeof(clientSockets));
+    char client_ip[INET_ADDRSTRLEN];
+    char buffer[BUFFERSIZE];
+
     while (1)
     {
-        clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddress, &length);
-        if (clientSocket == -1)
+        FD_ZERO(&read_fds); // очищение набора файловых дескриптеров
+        FD_SET(serverSocket, &read_fds);
+        max_socket = serverSocket;
+        for (int i = 0; i < MAX_CLIENTS; i++)
         {
-            perror("Accept failed");
-            continue;
-        }
+            int tmp = clientSockets[i];
+            if (tmp > 0)
+            {
+                FD_SET(tmp, &read_fds);
+            }
 
-        threadData = (struct ThreadData *)malloc(sizeof(struct ThreadData));
-        threadData->client_address = clientAddress;
-        threadData->client_socket = clientSocket;
-
-        if (pthread_create(&thread_id, NULL, clientThread, threadData))
-        {
-            perror("Thread creation failed");
-            close(clientSocket);
-            free(threadData);
+            if (tmp > max_socket)
+            {
+                max_socket = tmp;
+            }
         }
-        else
+        int activ = select(max_socket+1, &read_fds, NULL, NULL, NULL);
+        if (activ < 0)
         {
-            pthread_detach(thread_id);
+            perror("Select error");
+            exit(EXIT_FAILURE);
+        }
+        if (FD_ISSET(serverSocket, &read_fds)) // если сокет сервера остался
+        {
+            length = sizeof(clientAddress);
+            clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddress, &length);
+            for (int i = 0; i < MAX_CLIENTS; i++)
+            {
+                if (clientSockets[i] == 0)
+                {
+                    clientSockets[i] = clientSocket;
+                    printf("Client connected, socket fd is %d\n", clientSocket);
+                    break;
+                }
+            }
+        }
+        for (int i = 0; i < MAX_CLIENTS; i++)
+        {
+            if (FD_ISSET(clientSockets[i], &read_fds))
+            {
+                ssize_t bytes_received = recv(clientSockets[i], buffer, sizeof(buffer), 0);
+                if (bytes_received <= 0)
+                {
+                    // Обработка отключения клиента
+                    printf("Client disconnected, socket fd is %d\n", clientSockets[i]);
+                    close(clientSockets[i]);
+                    clientSockets[i] = 0;
+                }
+                else
+                {
+                    inet_ntop(AF_INET, &(clientAddress.sin_addr), client_ip, INET_ADDRSTRLEN);
+                    int client_port = ntohs(clientAddress.sin_port);
+                    buffer[bytes_received] = '\0';
+                    printf("SERVER: IP адрес клиента: %s\n", client_ip);
+                    printf("SERVER: PORT клиента: %d\n", client_port);
+                    printf("SERVER: Сообщение: %s\n\n", buffer);
+                    char ans[] = "ANSWERD FROM SERVER FOR  ";
+                    ans[24] = buffer[0];
+                    send(clientSockets[i], ans, strlen(ans), 0);
+                }
+            }
         }
     }
     close(serverSocket);
-    fclose(shared_file);
     return EXIT_SUCCESS;
 }
