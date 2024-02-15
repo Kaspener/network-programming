@@ -6,9 +6,10 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define BUFFERSIZE 32
-#define LISTEN_QUEUE 10
+#define BUFFERSIZE 128
+#define LISTEN_QUEUE 5
 #define MAX_CLIENTS 10
+#define MAX_NAME_LENGTH 16
 
 int Socket(int domain, int type, int protocol);
 
