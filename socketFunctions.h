@@ -10,6 +10,19 @@
 #define LISTEN_QUEUE 5
 #define MAX_CLIENTS 10
 #define MAX_NAME_LENGTH 16
+#define MESSAGE_SIZE 1
+#define TYPE_SIZE 1
+
+#define BROADCASTMESSAGE '0'
+#define PRIVATEMESSAGE '1'
+#define BROADCASTSERVER '2'
+#define PRIVATESERVER '3'
+#define USERLIST '4'
+#define ERRORMESSAGE '5'
+
+#define OKEY '0'
+#define NO_PLACE '1'
+#define NO_NAME '2'
 
 int Socket(int domain, int type, int protocol);
 
