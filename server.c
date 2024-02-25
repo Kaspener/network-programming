@@ -85,6 +85,26 @@ int privateMessage(char *message, char *name)
     return 0;
 }
 
+void userList(struct ThreadData *data){
+    memset(data->buffer, 0, BUFFERSIZE);
+    if (countOfClients == 1) sprintf(data->buffer, "0000No users");
+    else sprintf(data->buffer, "0000Users:");
+    pthread_mutex_lock(&mutex);
+    for (int i = 0; i < countOfClients; ++i)
+    {
+        if (clients[i]->client_socket != data->client_socket)
+        {
+            memset(data->buffer + strlen(data->buffer), '\n', 1);
+            memcpy(data->buffer + strlen(data->buffer), clients[i]->name, strlen(clients[i]->name));
+        }
+    }
+    memset(data->buffer, strlen(data->buffer), MESSAGE_SIZE);
+    memset(data->buffer+1, USERLIST, TYPE_SIZE);
+    memset(data->buffer+2, 1, 1);
+    send(data->client_socket, data->buffer, strlen(data->buffer), 0);
+    pthread_mutex_unlock(&mutex);
+}
+
 void errorMessage(struct ThreadData *data, char *message)
 {
     sprintf(data->buffer, "5%c%s%s", (char)strlen(data->name), data->name, message);
@@ -131,11 +151,15 @@ void sendMessageToClients(struct ThreadData *data)
         memmove(data->buffer + 3 + nameLen, data->buffer + 10 + nameLen + strlen(name), strlen(data->buffer) - 9 - nameLen - strlen(name));
         memset(data->buffer, len - 7 - strlen(name), MESSAGE_SIZE);
         memset(data->buffer + 1, PRIVATEMESSAGE, TYPE_SIZE);
-        printf("[DEB]: Name = {%s}, Message = {%s}\n", name, data->buffer);
         if (!privateMessage(data->buffer, name))
         {
             errorMessage(data, "No user");
         }
+        return;
+    }
+    if (strcmp(command, "list") == 0)
+    {
+        userList(data);
         return;
     }
     errorMessage(data, "No command");

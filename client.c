@@ -24,7 +24,9 @@ void readMessage(char *buffer)
     case PRIVATEMESSAGE:
         printf("{\033[33m%s\033[0m -> \033[34mYOU\033[0m} %s\n", name, buffer);
         break;
-
+    case USERLIST:
+        printf("\033[33m%s\033[0m\n", buffer);
+        break;
     case ERRORMESSAGE:
         printf("\033[31m%s\033[0m\n", buffer);
         break;
@@ -71,7 +73,6 @@ void *send_message(void *arg)
 {
     char message[BUFFERSIZE];
     memset(message, 0, BUFFERSIZE);
-    // char *message = NULL;
     ssize_t len = BUFFERSIZE;
     int socket = *(int *)arg;
     while (1)
@@ -83,13 +84,22 @@ void *send_message(void *arg)
             int c;
             while ((c = getc(stdin)) != '\n' && c != EOF){}
         }
-        int size = strlen(message);
         int spaceStart = 0;
-        int spaceEnd = size - 1;
         while (message[spaceStart] == ' ')
         {
             spaceStart++;
         }
+        char temp[BUFFERSIZE];
+        memset(temp, 0, BUFFERSIZE);
+        temp[0] = message[0];
+        int iter = 1;
+        for(int i = 1; i < BUFFERSIZE; ++i){
+            if (message[i] == ' ' && message[i-1] == ' ') continue;
+            temp[iter++] = message[i];
+        }
+        memcpy(message, temp, BUFFERSIZE);
+        int size = strlen(message);
+        int spaceEnd = size - 1;
         while (message[spaceEnd] == ' ')
         {
             spaceEnd--;
