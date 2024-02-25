@@ -9,6 +9,37 @@
 
 static char name[MAX_NAME_LENGTH];
 
+void formatLine(char *message)
+{
+    if (message[0] == '/')
+    {
+        printf("\033[1A");
+        printf("\033[1K");
+        if (strncmp(message, "/priv", 5) == 0)
+        {
+            char name[MAX_NAME_LENGTH];
+            for (int i = 0; i < MAX_NAME_LENGTH; ++i)
+            {
+                if (message[6 + i] == ' ')
+                {
+                    name[i] = 0;
+                    break;
+                }
+                else
+                {
+                    name[i] = message[6 + i];
+                }
+            }
+            printf("{\033[34mYOU\033[0m -> \033[33m%s\033[0m} %s\n", name, message + 7 + strlen(name));
+        }
+    }
+    else
+    {
+        printf("\033[1A");
+        printf("\033[37m[TO ALL]\033[0m %s\n", message);
+    }
+}
+
 void readMessage(char *buffer)
 {
     int operation = buffer[0];
@@ -24,12 +55,23 @@ void readMessage(char *buffer)
     case PRIVATEMESSAGE:
         printf("{\033[33m%s\033[0m -> \033[34mYOU\033[0m} %s\n", name, buffer);
         break;
+    case BROADCASTSERVER:
+        printf("{\033[32m%s\033[0m} %s\n", name, buffer);
+        break;
+    case PRIVATESERVER:
+        printf("{\033[32m%s\033[0m -> \033[34mYOU\033[0m} %s\n", name, buffer);
+        break;
     case USERLIST:
         printf("\033[33m%s\033[0m\n", buffer);
         break;
     case ERRORMESSAGE:
+        if (strcmp(buffer, "No user") == 0) printf("\033[1A");
+        printf("\33[2K\r");
         printf("\033[31m%s\033[0m\n", buffer);
         break;
+    case KICK:
+        printf("\033[31m%s\033[0m\n", buffer);
+        exit(EXIT_SUCCESS);
     default:
         break;
     }
@@ -45,7 +87,7 @@ void *receive_messages(void *arg)
         ssize_t bytes_received = recv(socket, buffer, sizeof(buffer), 0);
         if (bytes_received <= 0)
         {
-            printf("Server disconnected\n");
+            printf("\033[31mServer disconnected\033[0m\n");
             close(socket);
             exit(EXIT_SUCCESS);
         }
@@ -78,11 +120,13 @@ void *send_message(void *arg)
     while (1)
     {
         fgets(message, BUFFERSIZE, stdin);
-        message[strlen(message)-1] = 0;
+        message[strlen(message) - 1] = 0;
         if (strlen(message) == 126)
         {
             int c;
-            while ((c = getc(stdin)) != '\n' && c != EOF){}
+            while ((c = getc(stdin)) != '\n' && c != EOF)
+            {
+            }
         }
         int spaceStart = 0;
         while (message[spaceStart] == ' ')
@@ -93,8 +137,10 @@ void *send_message(void *arg)
         memset(temp, 0, BUFFERSIZE);
         temp[0] = message[0];
         int iter = 1;
-        for(int i = 1; i < BUFFERSIZE; ++i){
-            if (message[i] == ' ' && message[i-1] == ' ') continue;
+        for (int i = 1; i < BUFFERSIZE; ++i)
+        {
+            if (message[i] == ' ' && message[i - 1] == ' ')
+                continue;
             temp[iter++] = message[i];
         }
         memcpy(message, temp, BUFFERSIZE);
@@ -113,6 +159,7 @@ void *send_message(void *arg)
         memset(message, size, MESSAGE_SIZE);
         if (strncmp(message + MESSAGE_SIZE, "/exit", 5) == 0)
             exit(EXIT_SUCCESS);
+        formatLine(message + 1);
         send(socket, message, size + 1, 0);
     }
 }
@@ -154,6 +201,8 @@ int main(int argc, char **argv)
         printf("There is no space on the server\n");
         return EXIT_FAILURE;
     }
+    system("clear");
+    printf("\033[32mWelcome on server!\033[0m\n");
 
     pthread_t receive_thread, send_thread;
 

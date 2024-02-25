@@ -85,10 +85,13 @@ int privateMessage(char *message, char *name)
     return 0;
 }
 
-void userList(struct ThreadData *data){
+void userList(struct ThreadData *data)
+{
     memset(data->buffer, 0, BUFFERSIZE);
-    if (countOfClients == 1) sprintf(data->buffer, "0000No users");
-    else sprintf(data->buffer, "0000Users:");
+    if (countOfClients == 1 && data->client_socket != 0 || countOfClients == 0 && data->client_socket == 0)
+        sprintf(data->buffer, "0000No users");
+    else
+        sprintf(data->buffer, "0000Users:");
     pthread_mutex_lock(&mutex);
     for (int i = 0; i < countOfClients; ++i)
     {
@@ -99,9 +102,15 @@ void userList(struct ThreadData *data){
         }
     }
     memset(data->buffer, strlen(data->buffer), MESSAGE_SIZE);
-    memset(data->buffer+1, USERLIST, TYPE_SIZE);
-    memset(data->buffer+2, 1, 1);
-    send(data->client_socket, data->buffer, strlen(data->buffer), 0);
+    memset(data->buffer + 1, USERLIST, TYPE_SIZE);
+    memset(data->buffer + 2, 1, 1);
+    if (data->client_socket != 0)
+        send(data->client_socket, data->buffer, strlen(data->buffer), 0);
+    else
+    {
+        memmove(data->buffer, data->buffer + 4, strlen(data->buffer) - 3);
+        printf("\033[33m%s\033[0m\n", data->buffer);
+    }
     pthread_mutex_unlock(&mutex);
 }
 
@@ -110,7 +119,32 @@ void errorMessage(struct ThreadData *data, char *message)
     sprintf(data->buffer, "5%c%s%s", (char)strlen(data->name), data->name, message);
     memmove(data->buffer + MESSAGE_SIZE, data->buffer, strlen(data->buffer) + 1);
     memset(data->buffer, strlen(data->buffer), MESSAGE_SIZE);
-    send(data->client_socket, data->buffer, strlen(data->buffer), 0);
+    if (data->client_socket != 0)
+        send(data->client_socket, data->buffer, strlen(data->buffer), 0);
+    else
+    {
+        memmove(data->buffer, data->buffer + 9, strlen(data->buffer) - 8);
+        printf("\033[31m%s\033[0m\n", data->buffer);
+    }
+}
+
+int kickUser(char *message, char *name)
+{
+    pthread_mutex_lock(&mutex);
+    for (int i = 0; i < countOfClients; ++i)
+    {
+        if (strlen(clients[i]->name) == strlen(name))
+        {
+            if (strcmp(clients[i]->name, name) == 0)
+            {
+                send(clients[i]->client_socket, message, strlen(message), 0);
+                pthread_mutex_unlock(&mutex);
+                return 1;
+            }
+        }
+    }
+    pthread_mutex_unlock(&mutex);
+    return 0;
 }
 
 void sendMessageToClients(struct ThreadData *data)
@@ -126,7 +160,10 @@ void sendMessageToClients(struct ThreadData *data)
     data->buffer[len] = 0;
     if (data->buffer[3 + nameLen] != '/')
     {
-        memset(data->buffer + 1, BROADCASTMESSAGE, TYPE_SIZE);
+        if (data->client_socket != 0)
+            memset(data->buffer + 1, BROADCASTMESSAGE, TYPE_SIZE);
+        else
+            memset(data->buffer + 1, BROADCASTSERVER, TYPE_SIZE);
         broadcastMessage(data->buffer, data->client_socket);
         return;
     }
@@ -150,7 +187,10 @@ void sendMessageToClients(struct ThreadData *data)
         }
         memmove(data->buffer + 3 + nameLen, data->buffer + 10 + nameLen + strlen(name), strlen(data->buffer) - 9 - nameLen - strlen(name));
         memset(data->buffer, len - 7 - strlen(name), MESSAGE_SIZE);
-        memset(data->buffer + 1, PRIVATEMESSAGE, TYPE_SIZE);
+        if (data->client_socket != 0)
+            memset(data->buffer + 1, PRIVATEMESSAGE, TYPE_SIZE);
+        else
+            memset(data->buffer + 1, PRIVATESERVER, TYPE_SIZE);
         if (!privateMessage(data->buffer, name))
         {
             errorMessage(data, "No user");
@@ -246,11 +286,90 @@ void *clientThread(void *data)
     }
 }
 
+void *send_message(void *arg)
+{
+    char message[BUFFERSIZE];
+    memset(message, 0, BUFFERSIZE);
+    ssize_t len = BUFFERSIZE;
+    struct ThreadData *threadData = (struct ThreadData *)malloc(sizeof(struct ThreadData));
+    threadData->client_socket = 0;
+    memset(threadData->name, 0, MAX_NAME_LENGTH);
+    memcpy(threadData->name, "SERVER", 6);
+    while (1)
+    {
+        fgets(message, BUFFERSIZE, stdin);
+        message[strlen(message) - 1] = 0;
+        if (strlen(message) == 126)
+        {
+            int c;
+            while ((c = getc(stdin)) != '\n' && c != EOF)
+            {
+            }
+        }
+        int spaceStart = 0;
+        while (message[spaceStart] == ' ')
+        {
+            spaceStart++;
+        }
+        char temp[BUFFERSIZE];
+        memset(temp, 0, BUFFERSIZE);
+        temp[0] = message[0];
+        int iter = 1;
+        for (int i = 1; i < BUFFERSIZE; ++i)
+        {
+            if (message[i] == ' ' && message[i - 1] == ' ')
+                continue;
+            temp[iter++] = message[i];
+        }
+        memcpy(message, temp, BUFFERSIZE);
+        int size = strlen(message);
+        int spaceEnd = size - 1;
+        while (message[spaceEnd] == ' ')
+        {
+            spaceEnd--;
+        }
+        if (spaceStart >= spaceEnd)
+            continue;
+        size = spaceEnd - spaceStart + 1;
+        memmove(message, message + spaceStart, size);
+        memset(message + size, 0, BUFFERSIZE - size);
+        if (strncmp(message, "/exit", 5) == 0)
+            exit(EXIT_SUCCESS);
+        memcpy(threadData->buffer, message, BUFFERSIZE);
+        if (strncmp(message, "/kick", 5) == 0)
+        {
+            char name[MAX_NAME_LENGTH];
+            for (int i = 0; i < MAX_NAME_LENGTH; ++i)
+            {
+                if (threadData->buffer[6 + i] == ' ')
+                {
+                    name[i] = 0;
+                    break;
+                }
+                else
+                {
+                    name[i] = threadData->buffer[6 + i];
+                }
+            }
+            sprintf(threadData->buffer, "0000YOU BE KICKED");
+            memset(threadData->buffer, strlen(threadData->buffer) - 1, MESSAGE_SIZE);
+            memset(threadData->buffer + 1, KICK, TYPE_SIZE);
+            memset(threadData->buffer + 2, 1, 1);
+            if (!kickUser(threadData->buffer, name))
+            {
+                errorMessage(threadData, "No user");
+            }
+            continue;
+        }
+        sendMessageToClients(threadData);
+    }
+}
+
 int main()
 {
     struct ThreadData *threadData;
 
-    pthread_t thread_id;
+    pthread_t thread_id, send_thread;
     int clientSocket;
     int serverSocket = Socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_in serverAddress, clientAddress;
@@ -261,7 +380,9 @@ int main()
     GetSockName(serverSocket, &serverAddress, &length);
     Listen(serverSocket, LISTEN_QUEUE);
 
-    printf("Open server:\nAddress = %d\tPort = %d\n", ntohl(serverAddress.sin_addr.s_addr), ntohs(serverAddress.sin_port));
+    pthread_create(&send_thread, NULL, send_message, NULL);
+
+    printf("Open server:\nPort = %d\n", ntohs(serverAddress.sin_port));
     while (1)
     {
         clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddress, &length);
@@ -316,6 +437,7 @@ int main()
             pthread_detach(thread_id);
         }
     }
+    pthread_join(send_thread, NULL);
     close(serverSocket);
     return EXIT_SUCCESS;
 }

@@ -19,6 +19,7 @@
 #define PRIVATESERVER '3'
 #define USERLIST '4'
 #define ERRORMESSAGE '5'
+#define KICK '6'
 
 #define OKEY '0'
 #define NO_PLACE '1'
