@@ -36,6 +36,7 @@ void formatLine(char *message)
     else
     {
         printf("\033[1A");
+        printf("\033[2K");
         printf("\033[37m[TO ALL]\033[0m %s\n", message);
     }
 }
@@ -128,11 +129,6 @@ void *send_message(void *arg)
             {
             }
         }
-        int spaceStart = 0;
-        while (message[spaceStart] == ' ')
-        {
-            spaceStart++;
-        }
         char temp[BUFFERSIZE];
         memset(temp, 0, BUFFERSIZE);
         temp[0] = message[0];
@@ -150,6 +146,7 @@ void *send_message(void *arg)
         {
             spaceEnd--;
         }
+        int spaceStart = message[0] == ' ' ? 1 : 0;
         if (spaceStart >= spaceEnd)
             continue;
         size = spaceEnd - spaceStart + 1;
@@ -157,6 +154,7 @@ void *send_message(void *arg)
         memset(message + size, 0, BUFFERSIZE - size);
         memmove(message + MESSAGE_SIZE, message, size);
         memset(message, size, MESSAGE_SIZE);
+        message[strlen(message)] = 0;
         if (strncmp(message + MESSAGE_SIZE, "/exit", 5) == 0)
             exit(EXIT_SUCCESS);
         formatLine(message + 1);
